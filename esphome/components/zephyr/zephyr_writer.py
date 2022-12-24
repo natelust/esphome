@@ -170,7 +170,7 @@ class ZephyrDirectoryBuilder:
             #const struct device *dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
 def add_zephyr_main(text: str) -> str:
     text += AUTO_GEN_ZEPHYR_MAIN_BEGIN + "\n"
-    text += dedent(r"""#include <zephyr/mgmt/mcumgr/smp_udp.h>
+    text += dedent(r"""#include <zephyr/mgmt/mcumgr/transport/smp_udp.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/net_event.h>
 #include <zephyr/net/net_conn_mgr.h>
@@ -178,10 +178,10 @@ def add_zephyr_main(text: str) -> str:
 #define LOG_LEVEL LOG_LEVEL_DBG
 #include <zephyr/logging/log.h>
 
-//#include "zephyr/mgmt/mcumgr/grp/img_mgmt/img_mgmt.h"
-//#include "zephyr/mgmt/mcumgr/grp/os_mgmt/os_mgmt.h"
-#include "img_mgmt/img_mgmt.h"
-#include "os_mgmt/os_mgmt.h"
+#include "zephyr/mgmt/mcumgr/grp/img_mgmt/img_mgmt.h"
+#include "zephyr/mgmt/mcumgr/grp/os_mgmt/os_mgmt.h"
+//#include "img_mgmt/img_mgmt.h"
+//#include "os_mgmt/os_mgmt.h"
 
 LOG_MODULE_REGISTER(esphome_main);
 

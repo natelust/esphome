@@ -39,7 +39,7 @@ def set_core_data(config):
         ("CONFIG_NET_IPV6", "y"),
         ("CONFIG_NET_UDP", "y"),
         ("CONFIG_NET_TCP", "y"),
-        ("CONFIG_OPENTHREAD_TCP_ENABLE", "y"),
+        #("CONFIG_OPENTHREAD_TCP_ENABLE", "y"),
         ("CONFIG_NET_SOCKETS", "y"),
         ("CONFIG_NET_CONFIG_SETTINGS", "y"),
         ("CONFIG_SETTINGS_RUNTIME", "y"),
@@ -56,6 +56,7 @@ def set_core_data(config):
         ("CONFIG_SETTINGS_NVS", "y"),
         ("CONFIG_ARM_MPU", "n"),
         #("CONFIG_NET_LOG", "y"),
+        #("CONFIG_NET_CONFIG_LOG_LEVEL_DBG", "y"),
         ("CONFIG_OPENTHREAD_THREAD_STACK_SIZE", 6144),
         ('CONFIG_MBEDTLS_HEAP_SIZE', 15240),
         ("CONFIG_OPENTHREAD_DHCP6_CLIENT", "y"),
@@ -73,7 +74,18 @@ def set_core_data(config):
         #("CONFIG_MDNS_RESOLVER", "y"),
         #("CONFIG_LLMNR_RESOLVER", "y"),
         ("CONFIG_NET_L2_OPENTHREAD", "y"),
-        ("CONFIG_OPENTHREAD_CLI_TCP_ENABLE", "n")
+        ("CONFIG_NET_CONFIG_INIT_TIMEOUT", 60),
+        ("CONFIG_OPENTHREAD_CLI_TCP_ENABLE", "y"),
+        ("CONFIG_NET_IF_IPV6_PREFIX_COUNT", 20),
+        ("CONFIG_NET_MGMT_EVENT_MONITOR", "y"),
+        #("CONFIG_NET_TCP_LOG_LEVEL_DBG", "y"),
+        #("CONFIG_NET_SOCKETS_NET_MGMT", "y"),
+        #("CONFIG_NET_SOCKETS_LOG_LEVEL_DBG", "y"),
+        #("CONFIG_NET_BUF_RX_COUNT", 128),
+        #("CONFIG_NET_BUF_TX_COUNT", 128),
+        #("CONFIG_OPENTHREAD_DEBUG", "y"),
+        #("CONFIG_OPENTHREAD_L2_LOG_LEVEL_DBG", "y")
+
 
     ))
 

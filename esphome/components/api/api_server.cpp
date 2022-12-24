@@ -13,6 +13,7 @@
 #include "esphome/components/logger/logger.h"
 #endif
 
+
 #include <algorithm>
 
 namespace esphome {
@@ -34,6 +35,11 @@ void APIServer::setup() {
   int err = socket_->setsockopt(SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
   if (err != 0) {
     ESP_LOGW(TAG, "Socket unable to set reuseaddr: errno %d", err);
+    // we can still continue
+  }
+  err = socket_->setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, &enable, sizeof(enable));
+  if (err != 0) {
+    ESP_LOGW(TAG, "my thing went wrong", err);
     // we can still continue
   }
   err = socket_->setblocking(false);
@@ -77,7 +83,7 @@ void APIServer::setup() {
     return;
   }
 
-  err = socket_->listen(4);
+  err = socket_->listen(5);
   if (err != 0) {
     ESP_LOGW(TAG, "Socket unable to listen: errno %d", errno);
     this->mark_failed();
@@ -114,7 +120,8 @@ void APIServer::loop() {
   while (true) {
     struct sockaddr_storage source_addr;
     socklen_t addr_len = sizeof(source_addr);
-    auto sock = socket_->accept((struct sockaddr *) &source_addr, &addr_len);
+    //auto sock = socket_->accept((struct sockaddr *) &source_addr, &addr_len);
+    auto sock = socket_->accept((struct sockaddr *) NULL, NULL);
     if (!sock)
       break;
     ESP_LOGD(TAG, "Accepted %s", sock->getpeername().c_str());

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from textwrap import dedent
 
 from esphome.core import CORE
-from .const import ZEPHYR_BASE, ZEPHYR_CORE_KEY, KCONFIG_KEY
 from esphome.helpers import mkdir_p
 
 
@@ -92,12 +91,10 @@ class ZephyrDirectoryBuilder:
 
     def createProjFile(self) -> None:
         self.manager.add_Kconfig_vec((
-            ("CONFIG_BOOTLOADER_MCUBOOT", "y"),
-            ("CONFIG_PRINTK", "y"),
             ('CONFIG_MCUBOOT_SIGNATURE_KEY_FILE', f'"{self.key_file}"'),
         ))
         result = '\n'.join(f"{key}={value}"
-                           for key, value in self.manager.Kconfigs.items())
+                           for key, value in self.manager.get_Kconfigs().items())
         with open(os.path.join(self.proj_dir, "prj.conf"), "w") as f:
             f.write(result)
 
@@ -155,6 +152,10 @@ class ZephyrDirectoryBuilder:
             os.chmod(self.key_file, mode=0o444)
 
         # always copy the bootloader in case there is a new version
+        # Remove the tree for intermediate products that were created
+        dest = os.path.join(f"{self.boot_dir}", "mcuboot")
+        if os.path.exists(dest):
+            shutil.rmtree(f"{self.boot_dir}")
         shutil.copytree(
             os.path.join(self.zephyr_base, "bootloader", "mcuboot"),
             os.path.join(f"{self.boot_dir}", "mcuboot"), dirs_exist_ok=True,
@@ -186,7 +187,9 @@ def add_zephyr_main(text: str) -> str:
 LOG_MODULE_REGISTER(esphome_main);
 
 #define EVENT_MASK (NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED)
-
+""")
+    text += CORE.zephyr_manager.board.board_setup()
+    text += dedent(r"""
 static struct net_mgmt_event_callback mgmt_cb;
 
 static void event_handler(struct net_mgmt_event_callback *cb,
@@ -222,14 +225,20 @@ void start_smp_udp(void)
 
 int main(void)
 {
+    //printk("STARTING main\n");
     const struct device *dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_shell_uart));
 
     uint32_t dtr = 0;
 
+    board_setup();
+
+    /*
     if (!device_is_ready(dev) || usb_enable(NULL)) {
         return 1;
     }
+    */
 
+    //printk("after polling\n");
     /* Poll if the DTR flag was set */
     /*
     while (!dtr) {
@@ -238,12 +247,14 @@ int main(void)
 
     }
     */
+    k_sleep(K_MSEC(2000));
+    //printk("starting smp udp\n");
 //#ifdef USE_ZEPHYR_OTA
-    start_smp_udp();
-    img_mgmt_register_group();
-    os_mgmt_register_group();
+    //start_smp_udp();
+    //img_mgmt_register_group();
+    //os_mgmt_register_group();
 //#endif
-    printk("STARTING PROGRAM\n");
+    //printk("STARTING PROGRAM\n");
     setup();
     while (1) {
         loop();

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import os
 import textwrap
 from time import sleep
+from textwrap import dedent
 
 from typing import List, Tuple, Mapping, TYPE_CHECKING
 from ..zephyr_writer import ZephyrDirectoryBuilder
@@ -14,9 +15,28 @@ from esphome.util import run_external_process
 
 
 class BaseZephyrBoard(ABC):
-    def __init__(self, manager: ZephyrManager, *args, **kwargs) -> None:
+    def __init__(self,
+                 manager: ZephyrManager,
+                 board_args: Mapping,
+                 *args,
+                 **kwargs
+                 ) -> None:
         super().__init__()
         self._manager = manager
+        self._args = board_args
+
+    @staticmethod
+    def validate_config(config: Mapping) -> None:
+        """This is a function boards may use to validate any board specific
+        configs.
+
+        Use the config validation methods and or raise Invalid if something
+        is not of the appropriate type.
+        """
+        pass
+
+    def get_board_KConfig(self) -> list[tuple[str, str]]:
+        return []
 
     @abstractmethod
     def validate_gpio_pin(self, value):
@@ -86,6 +106,17 @@ class BaseZephyrBoard(ABC):
     def pre_compile_application(self, args: List[str]) -> List[str]:
         return args
 
+    def board_setup(self) -> str:
+        """This is a hook that boards can use to run anything before setup
+        and loop are called. The returned c function will be called in main,
+        and must have a void return type. Any required includes can be placed
+        immediately before the function declaration.
+        """
+        return dedent("""
+        void board_setup() {
+        }
+        """)
+
     @abstractmethod
     def spi_arg_parser(self, kwargs):
         raise NotImplementedError("Not implemented on the base class")
@@ -94,12 +125,21 @@ class BaseZephyrBoard(ABC):
     def spi_device(self) -> str:
         raise NotImplementedError("Not implemented on the base class")
 
-    @abstractmethod
     def spi_pins(self, clk=None, mosi=None, miso=None) -> Mapping[str, str]:
         """This must return a mapping with keys clk, mosi, miso corresponding
         to strings of the corresponding pins.
+
+        The base class implements the basic machinery, subclasses should
+        implement this method, do any default lookups in case of None, and
+        then class super, in the case that there are suitable defaults.
         """
-        raise NotImplementedError("Not implemented on the base class")
+        if clk is None or mosi is None or miso is None:
+            raise ValueError("Must supply clk, mosi, miso pins")
+        result = {}
+        for name, pointer in (("clk", clk), ("mosi", mosi), ("miso", miso)):
+            controller, pin = self.get_device_and_pin(pointer)
+            result[name] = (controller, pin)
+        return result
 
     @abstractmethod
     def handle_spi(self, **kwargs) -> Mapping[str, str]:

@@ -14,24 +14,47 @@ from .netUpload import net_upload
 from .const import PROJ_DIR, BOOT_DIR
 from .utils import at_location
 
+
+ALL_KCONFIGS = {}
+
+
 class ZephyrManager:
     def __init__(self,
-                 board: str,
+                 board: Mapping,
                  zephyr_base: str,
                  Kconfigs: MutableMapping[str, Any],
                  flash_args: str
                  ) -> None:
-        if board not in registry:
+        if board["name"] not in registry:
             raise cv.Invalid("Specified board does not appear to be a "
                              f"defined Zephyr board {registry.keys()}",)
-        self._board = registry[board](self)
-        self.board_name = board
+
+        self._Kconfigs = ALL_KCONFIGS
+        self.board_name = board["name"]
+        del board["name"]
+        board_class = registry[self.board_name]
+        board_class.validate_config(board)
+        self._board = board_class(self, board_args=board)
         self._zephyr_base = zephyr_base
-        self.Kconfigs = Kconfigs
+        self._userKconfigs = Kconfigs
         self.flash_args = flash_args
         self.device_overlay_list = []
         self.add_Kconfig_vec((("CONFIG_SPI", "n"),
-                              ("CONFIG_I2C", "n")))
+                              ("CONFIG_I2C", "n"),
+                              ("CONFIG_PM_DEVICE", "y"),
+                              ("CONFIG_BOOTLOADER_MCUBOOT", "y"),
+                              ("CONFIG_PRINTK", "y")
+                              ))
+
+    def get_Kconfigs(self) -> Iterable[tuple[str, ...]]:
+        # ensure that the users choices are applied last
+        updated_Kconfigs = {**self._Kconfigs}
+        # add in the configs the board requires after all the
+        # modules
+        updated_Kconfigs.update(self._board.get_board_KConfig())
+        # finally add in the user defined configs last
+        updated_Kconfigs.update(self._userKconfigs)
+        return updated_Kconfigs
 
     @property
     def board(self) -> BaseZephyrBoard:
@@ -44,7 +67,7 @@ class ZephyrManager:
     def add_Kconfig(self,
                     config_name: str,
                     config_value: Union[str, int, float, bool]) -> None :
-        self.Kconfigs[config_name] = config_value
+        self._Kconfigs[config_name] = config_value
 
     def add_Kconfig_vec(self, configs: Iterable[Tuple[str, Any]]) -> None:
         for key, value in configs:

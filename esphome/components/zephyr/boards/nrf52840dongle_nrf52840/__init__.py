@@ -1,10 +1,10 @@
 from __future__ import annotations
-import os
-from shutil import which
-from textwrap import dedent
-from typing import Tuple, Mapping, TYPE_CHECKING, List
 
-from esphome.util import run_external_process
+import os
+import time
+from textwrap import dedent
+from shutil import which
+from typing import Tuple, Mapping, TYPE_CHECKING, List
 
 from ..nrf52840_base import NRF52840Base, GPIO_0, GPIO_1
 from .. import registry
@@ -12,6 +12,7 @@ from .. import registry
 from .writer import DongleDirectoryBuilder
 
 import esphome.config_validation as cv
+from esphome.util import run_external_process
 
 if TYPE_CHECKING:
     from ...zephyr_writer import ZephyrDirectoryBuilder
@@ -54,6 +55,30 @@ analogMapping: Mapping[str, int] = {
 
 @registry.register("nrf52840dongle_nrf52840")
 class NRF52840Dongle(NRF52840Base):
+    def __init__(self, mangager, board_args, *args, **kwargs) -> None:
+        super().__init__(mangager, board_args, *args, **kwargs)
+
+    def get_board_KConfig(self) -> list[tuple[str, str]]:
+        configs = super().get_board_KConfig()
+        # There is very little space on these boards, set some options to
+        # give more space for a users program
+        configs.extend((
+            ("CONFIG_FLASH_SHELL", "n"),
+            ("CONFIG_HWINFO_SHELL", "n"),
+            ("CONFIG_NET_SHELL", "n"),
+            ("CONFIG_MCUBOOT_SHELL", "n"),
+            ("CONFIG_ADC_SHELL", "n"),
+            ("CONFIG_MBEDTLS_AES_ROM_TABLES", "n"),
+            ("CONFIG_LOG_MAX_LEVEL", 1),
+            ("CONFIG_LOG_DEFAULT_LEVEL", 1),
+            ("CONFIG_LOG_MODE_MINIMAL", "y"),
+            ("CONFIG_MINIMAL_LIBC", 'y'),
+            ("CONFIG_MBEDTLS_OPENTHREAD_OPTIMIZATIONS_ENABLED", "y"),
+            ("CONFIG_OPENTHREAD_SHELL", "n"),
+            ("CONFIG_OPENTHREAD_MTD", "y"),
+        ))
+        return configs
+
     def __str__(self):
         return "nrf52840dongle_nrf52840"
 
@@ -76,19 +101,19 @@ class NRF52840Dongle(NRF52840Base):
                     compatible = "fixed-partitions";
                     #address-cells = < 0x1 >;
                     #size-cells = < 0x1 >;
-                    newboot_partition: partition@1000 {
+                    boot_partition: partition@1000 {
                             label = "mcuboot";
                             reg = < 0x1000 0x000f000 >;
                     };
-                    newcode: partition@10000 {
+                    slot0_partition: partition@10000 {
                             label = "image-0";
                             reg = < 0x10000 0x66000 >;
                     };
-                    partition@76000 {
+                    slot1_partition: partition@76000 {
                             label = "image-1";
                             reg = < 0x76000 0x66000 >;
                     };
-                    partition@dc000 {
+                    storage_partition: partition@dc000 {
                             label = "storage";
                             reg = < 0xdc000 0x4000 >;
                     };
@@ -98,9 +123,11 @@ class NRF52840Dongle(NRF52840Base):
         return mapping
 
     def pre_compile_bootloader(self, args: List[str]) -> List[str]:
+        args = super().pre_compile_bootloader(args)
         args.extend([
-            "-DCONFIG_BOOT_ERASE_PROGRESSIVELY=n",
+            "-DCONFIG_BOOT_ERASE_PROGRESSIVELY=y",
             "-DCONFIG_BOOT_UPGRADE_ONLY=y",
+            "-DCONFIG_BOOT_SWAP_USING_MOVE=y"
             #"-DCONFIG_LOG=y",
             #         "-DCONFIG_DEBUG=n",
             #         "-DCONFIG_MBEDTLS_AES_ROM_TABLES=n",
@@ -112,7 +139,8 @@ class NRF52840Dongle(NRF52840Base):
     def pre_compile_application(self, args: List[str]) -> List[str]:
         # Flash space is at a premium, dont use space for zephyr log strings,
         # except critical ones
-        args.extend(['--', '-DCONFIG_LOG_MAX_LEVEL=2'])
+        args.extend(['-DCONFIG_LOG_MAX_LEVEL=2',
+                     "-DCONFIG_MBEDTLS_AES_ROM_TABLES=n"])
         return args
 
     @property
@@ -156,11 +184,13 @@ class NRF52840Dongle(NRF52840Base):
                     "--application-version",
                     "1",
                     f"{boot_dir}/build/zephyr/mcuboot.zip"]
+
             result = run_external_process(*args)
             if result != 0:
                 print("Creating boot image failed")
                 return result
             install_args = ["nrfutil",
+                            "--verbose",
                             "dfu",
                             "usb-serial",
                             "-pkg",
@@ -169,22 +199,28 @@ class NRF52840Dongle(NRF52840Base):
                             f"{host}",
                             "-b",
                             "1000000"]
+
             result = run_external_process(*install_args)
             if result != 0:
                 print("Uploading boot image failed, is your device in reset mode")
                 return result
-            print("Bootloader installed, unplug the device, plug it back in with the"
-                  " software button held down, and re-run upload")
+            #print("Bootloader installed, unplug the device, plug it back in with the"
+            #      " software button held down, and re-run upload")
             with open(boot_info_path, 'w') as f:
                 f.write("")
-            return -1
+            #return -1
+            # wait for the board to reboot, it will say in upload mode for 
+            # 5 seconds listening for the device to flash
+            time.sleep(2)
+            from esphome.__main__ import choose_upload_log_host
+            host = choose_upload_log_host(None, None, False, False, False)
 
         print("### FLASHING APPLICATION #####")
                       #f"--connstring=dev={host},baud=115200",
                       #f"--connstring=dev={host},baud=115200,mtu=512",
         image_args = ["mcumgr",
                       "--conntype=serial",
-                      f"--connstring=dev={host},baud=115200,mtu=512",
+                      f"--connstring=dev={host},baud=115200",
                       "image",
                       "upload",
                       "-e",

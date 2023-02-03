@@ -26,6 +26,7 @@ I2CDevice = i2c_ns.class_("I2CDevice")
 
 CONF_SDA_PULLUP_ENABLED = "sda_pullup_enabled"
 CONF_SCL_PULLUP_ENABLED = "scl_pullup_enabled"
+CONF_ZEPHYR_I2C_DEVICE = "zephyr_i2c_device"
 MULTI_CONF = True
 
 
@@ -63,6 +64,13 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_SCAN, default=True): cv.boolean,
     }
 ).extend(cv.COMPONENT_SCHEMA)
+
+if CORE.is_zephyr:
+    CONFIG_SCHEMA = CONFIG_SCHEMA.extend(
+        cv.Schema(
+            {cv.Optional(CONF_ZEPHYR_I2C_DEVICE, default=''): cv.string_strict}
+        )
+    )
 
 
 @coroutine_with_priority(1.0)

@@ -2,7 +2,7 @@ from textwrap import dedent
 from typing import Tuple, Mapping, List
 
 from ..nrf52840_base import NRF52840Base, GPIO_0, GPIO_1
-from .. import registry
+from .. import registry, BaseZephyrBoard
 
 import esphome.config_validation as cv
 
@@ -74,25 +74,18 @@ analogMapping: Mapping[str, int] = {
 
 @registry.register("adafruit_feather_nrf52840")
 class AdafruitFeatherNrf52840(NRF52840Base):
-    def get_writer(self):
-        self._manager.add_Kconfig_vec((
-        ("CONFIG_NORDIC_QSPI_NOR", "y"),
-        ("CONFIG_NORDIC_QSPI_NOR_FLASH_LAYOUT_PAGE_SIZE", 4096),
-        ("CONFIG_NORDIC_QSPI_NOR_STACK_WRITE_BUFFER_SIZE", 16),))
-        return super().get_writer()
+    def get_board_KConfig(self) -> list[tuple[str, str]]:
+        configs = super().get_board_KConfig()
+        configs.extend((
+            ("CONFIG_NORDIC_QSPI_NOR", "y"),
+            ("CONFIG_NORDIC_QSPI_NOR_FLASH_LAYOUT_PAGE_SIZE", 4096),
+            ("CONFIG_NORDIC_QSPI_NOR_STACK_WRITE_BUFFER_SIZE", 16),
+        ))
+        return configs
 
     def __str__(self):
         return "adafruit_feather_nrf52840"
 
-            #writeoc = "pp";
-            #readoc = "fastread";
-            #writeoc = "pp";
-            #quad-enable-bit = < 9 >;
-            #quad-enable-requirements = "S2B1v6";
-
-            #readoc = "read4o";
-            #writeoc = "pp4o";
-            #quad-enable-bit-mask = < 512 >;
     def flash_mapping(self) -> str:
         mapping = dedent("""
         /delete-node/ &slot1_partition;
@@ -116,19 +109,9 @@ class AdafruitFeatherNrf52840(NRF52840Base):
         };
         """)
         return mapping
-        """
-                header: partition@0 {
-                    label = "extra-header";
-                    reg = <0x00000000 0x400>;
-                };
-                partition@ce400 {
-                    label = "extra-storage";
-                    reg = < 0xce400 0x131c00>;
-                };
-                """
 
     def pre_compile_bootloader(self, args: List[str]) -> List[str]:
-        #args.extend(("-DCONFIG_BOOT_MAX_IMG_SECTORS=1024",))
+        args = super().pre_compile_bootloader(args)
         args.extend(("-DCONFIG_MULTITHREADING=y",
                      "-DCONFIG_BOOT_MAX_IMG_SECTORS=256",
                      "-DCONFIG_NORDIC_QSPI_NOR=y",
@@ -155,3 +138,18 @@ class AdafruitFeatherNrf52840(NRF52840Base):
             kwargs['scl'] = "D23"
         hardware, device = super().i2c_arg_parser(kwargs)
         return hardware, device
+
+    def upload(self):
+        if self._args["use_west"]:
+            return BaseZephyrBoard.upload(self)
+        else:
+            return super().upload()
+
+    def spi_pins(self, clk=None, mosi=None, miso=None) -> Mapping[str, str]:
+        if clk is None:
+            clk = "D26"
+        if mosi is None:
+            mosi = "D25"
+        if miso is None:
+            miso = "D24"
+        return super().spi_pins(clk, mosi, miso)

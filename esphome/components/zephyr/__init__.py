@@ -74,7 +74,7 @@ def set_core_data(config):
         ("CONFIG_USB_CDC_ACM_RINGBUF_SIZE", 2048),
         ('CONFIG_INIT_STACKS', 'y'),
         ('CONFIG_STDOUT_CONSOLE', 'y'),
-        ('CONFIG_SHELL_STACK_SIZE', 4096),
+        #('CONFIG_SHELL_STACK_SIZE', 4096),
         ('CONFIG_SHELL_BACKEND_SERIAL_INIT_PRIORITY', 51),
         ('CONFIG_SHELL_TAB', "y"),
         ('CONFIG_SHELL_TAB_AUTOCOMPLETION', "y"),
@@ -84,11 +84,11 @@ def set_core_data(config):
         ("CONFIG_DEBUG", "n"),
         ("CONFIG_BOOT_BANNER", "n"),
         ("CONFIG_MCUMGR", "y"),
-        ("CONFIG_MCUMGR_CMD_IMG_MGMT", "y"),
-        ("CONFIG_MCUMGR_CMD_OS_MGMT", "y"),
+        ("CONFIG_MCUMGR_GRP_IMG", "y"),
+        ("CONFIG_MCUMGR_GRP_OS", "y"),
         ("CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE", 2304),
-        ("CONFIG_MCUMGR_SMP_UDP_IPV6", "y"),
-        ("CONFIG_MCUMGR_SMP_UDP", "y"),
+        ("CONFIG_MCUMGR_TRANSPORT_UDP_IPV6", "y"),
+        ("CONFIG_MCUMGR_TRANSPORT_UDP", "y"),
         #("CONFIG_MCUMGR_SMP_UDP_STACK_SIZE", 768),
         #("CONFIG_MCUMGR_BUF_USER_DATA_SIZE", 40),
         #("CONFIG_MCUMGR_BUF_COUNT", 10),
@@ -96,6 +96,7 @@ def set_core_data(config):
         #("CONFIG_MCUMGR_SMP_SHELL", "y"),
         ("CONFIG_MBEDTLS_AES_ROM_TABLES", "n"),
         #("CONFIG_MCUMGR_SMP_UDP_IPV4", "y"),
+        ("CONFIG_ENTROPY_GENERATOR", 'y'),
     ))
 
 
@@ -177,14 +178,37 @@ ZEPHYR_FRAMEWORK_SCHEMA = cv.All(
 )
 
 
+def board_validator(value):
+    def _name_validator(value):
+        if "name" not in value:
+            raise cv.Invalid("Board name must be specified as string or key")
+        return value
+
+    def _validator(value):
+        if isinstance(value, str):
+            return _validator({"name": value})
+        result = cv.All(
+            cv.Schema(
+                {
+                    cv.Required("name"): cv.string_strict,
+
+                },
+                extra=cv.ALLOW_EXTRA
+            ),
+            _name_validator
+        )(value)
+        return result
+    return _validator(value)
+
+
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
-            cv.Required(CONF_BOARD): cv.string_strict,
+            cv.Required(CONF_BOARD): board_validator,
             cv.Required(ZEPHYR_BASE): cv.string_strict,
             cv.Optional(CONF_FRAMEWORK, default={}): ZEPHYR_FRAMEWORK_SCHEMA,
             cv.Optional(KCONFIG_KEY, default={}): cv.Any(dict),
-            cv.Required(FLASH_ARGS): cv.string_strict,
+            cv.Optional(FLASH_ARGS, default=""): cv.string_strict,
             cv.Optional("loop_interval", default=16): int,
         }
     ),

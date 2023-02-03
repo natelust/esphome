@@ -11,9 +11,8 @@ def check_zephyr(value):
         ("CONFIG_MCUMGR_CMD_IMG_MGMT", "y"),
         ("CONFIG_MCUMGR_CMD_OS_MGMT", "y"),
         ("CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE", 2304),
-        ("CONFIG_MCUMGR_SMP_UDP_IPV6", "y"),
-        ("CONFIG_MCUMGR_SMP_UDP", "y"),
-        ("CONFIG_MCUMGR_SMP_UDP_IPV6", "y"),
+        ("CONFIG_MCUMGR_TRANSPORT_UDP_IPV6", "y"),
+        ("CONFIG_MCUMGR_TRANSPORT_UDP", "y"),
         #("CONFIG_MCUMGR_SMP_UDP_IPV4", "y"),
     ))
     return value

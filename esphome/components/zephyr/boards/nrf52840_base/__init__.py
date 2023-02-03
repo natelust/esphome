@@ -1,10 +1,16 @@
+from __future__ import annotations
+
+import os
+from shutil import which
 from abc import abstractmethod
 import textwrap
 from typing import Tuple, Mapping
+import time
 from itertools import count
 
+from esphome.util import run_external_process
+
 from ..baseBoard import BaseZephyrBoard
-from .. import registry
 
 import esphome.config_validation as cv
 
@@ -13,8 +19,8 @@ GPIO_1 = "gpio1"
 
 
 class NRF52840Base(BaseZephyrBoard):
-    def __init__(self, mangager, *args, **kwargs) -> None:
-        super().__init__(mangager)
+    def __init__(self, mangager, board_args, *args, **kwargs) -> None:
+        super().__init__(mangager, board_args=board_args)
         self.hardware_i2c_devices = ["i2c0"]
         self.pin_control_counter = count()
 
@@ -51,9 +57,18 @@ class NRF52840Base(BaseZephyrBoard):
         return True
 
     def i2c_arg_parser(self, kwargs):
+        from esphome.components.i2c import CONF_ZEPHYR_I2C_DEVICE
         if self.hardware_i2c_devices:
             hardware = True
-            device = self.hardware_i2c_devices.pop()
+            if kwargs[CONF_ZEPHYR_I2C_DEVICE] != '':
+                conf_device = kwargs[CONF_ZEPHYR_I2C_DEVICE]
+                if conf_device in self.hardware_i2c_devices:
+                    self.hardware_i2c_devices.remove(conf_device)
+                    device = conf_device
+                else:
+                    raise ValueError(f"Selected i2c device {conf_device} is not setup for this board")
+            else:
+                device = self.hardware_i2c_devices.pop()
         else:
             hardware = False
             device = "gpioi2c0"
@@ -68,8 +83,8 @@ class NRF52840Base(BaseZephyrBoard):
         updated_i2c_dev = textwrap.dedent("""
         &{device} {{
             clock-frequency = < {freq} >;
-            status =  "ok" ;
-            compatible = "nordic,nrf-twim";
+            compatible = "nordic,nrf-twi";
+            status =  "okay" ;
             pinctrl-0 = <&{device}_default_alt>;
             pinctrl-1 = <&{device}_sleep_alt>;
             pinctrl-names = "default", "sleep";
@@ -107,19 +122,6 @@ class NRF52840Base(BaseZephyrBoard):
 
     def spi_arg_parser(self, kwargs):
         return
-
-    def spi_pins(self, clk=None, mosi=None, miso=None) -> Mapping[str, str]:
-        if clk is None:
-            clk = "D26"
-        if mosi is None:
-            mosi = "D25"
-        if miso is None:
-            miso = "D24"
-        result = {}
-        for name, pointer in (("clk", clk), ("mosi", mosi), ("miso", miso)):
-            controller, pin = self.get_device_and_pin(pointer)
-            result[name] = (controller, pin)
-        return result
 
     def handle_spi(self, **kwargs) -> Mapping[str, str]:
         clk_pin = kwargs.get("clk_pin")
@@ -190,3 +192,86 @@ class NRF52840Base(BaseZephyrBoard):
                                             "ADC_REF_EXTERNAL1"):
             raise cv.Invalid(f"{self} does not support reference "
                              f"{kwargs['ref']}")
+
+    def pre_compile_bootloader(self, args: list[str]) -> list[str]:
+        args = super().pre_compile_bootloader(args)
+        args.extend(
+            [
+                #"-DCONFIG_BOOT_SERIAL_WAIT_FOR_DFU=y",
+                #"-DCONFIG_BOOT_SERIAL_WAIT_FOR_DFU_TIMEOUT=5000",
+                #"-DCONFIG_BOOT_SERIAL_UART=y",
+                "-DCONFIG_MCUBOOT_INDICATION_LED=y"
+            ]
+        )
+        return args
+
+    def upload(self, flash_args: str, boot_dir: os.PathLike,
+               proj_dir: os.PathLike, boot_info_path: os.PathLike,
+               bootloader: bool, host: str):
+        if which("mcumgr") is None or which("nrfutil") is None:
+            raise ValueError(f"mcumgr and nrfutil must be installed to upload to {self}")
+        if not bootloader:
+            args = ["nrfutil",
+                    "pkg",
+                    "generate",
+                    "--hw-version",
+                    "52",
+                    "--sd-req=0x00",
+                    "--application",
+                    f"{boot_dir}/build/zephyr/zephyr.hex",
+                    "--application-version",
+                    "1",
+                    f"{boot_dir}/build/zephyr/mcuboot.zip"]
+
+            result = run_external_process(*args)
+            if result != 0:
+                print("Creating boot image failed")
+                return result
+            install_args = ["nrfutil",
+                            "--verbose",
+                            "dfu",
+                            "usb-serial",
+                            "-pkg",
+                            f"{boot_dir}/build/zephyr/mcuboot.zip",
+                            "-p",
+                            f"{host}",
+                            "-b",
+                            "1000000"]
+
+            result = run_external_process(*install_args)
+            if result != 0:
+                print("Uploading boot image failed, is your device in reset mode")
+                return result
+            with open(boot_info_path, 'w') as f:
+                f.write("")
+            # wait for the board to reboot, it will say in upload mode for
+            # 2 seconds listening for the device to flash
+            time.sleep(2)
+            from esphome.__main__ import choose_upload_log_host
+            host = choose_upload_log_host(None, None, False, False, False)
+
+        print("### FLASHING APPLICATION #####")
+                      #f"--connstring=dev={host},baud=115200",
+                      #f"--connstring=dev={host},baud=115200,mtu=512",
+        image_args = ["mcumgr",
+                      "--conntype=serial",
+                      f"--connstring=dev={host},baud=115200",
+                      "image",
+                      "upload",
+                      "-e",
+                      f"{proj_dir}/build/zephyr/zephyr.signed.bin"
+                      ]
+        result = run_external_process(*image_args)
+        if result != 0:
+            print("failed to upload image, is your board in boot mode?")
+            return result
+
+        restart_args = ["mcumgr",
+                        "--conntype=serial",
+                        f"--connstring=dev={host},baud=115200",
+                        "reset"
+                        ]
+        result = run_external_process(*restart_args)
+        if result != 0:
+            print("Failed to restart device through serial connection")
+        return result

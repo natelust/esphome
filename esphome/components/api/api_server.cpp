@@ -13,7 +13,6 @@
 #include "esphome/components/logger/logger.h"
 #endif
 
-
 #include <algorithm>
 
 namespace esphome {
@@ -37,11 +36,6 @@ void APIServer::setup() {
     ESP_LOGW(TAG, "Socket unable to set reuseaddr: errno %d", err);
     // we can still continue
   }
-  err = socket_->setsockopt(IPPROTO_IPV6, IPV6_V6ONLY, &enable, sizeof(enable));
-  if (err != 0) {
-    ESP_LOGW(TAG, "my thing went wrong", err);
-    // we can still continue
-  }
   err = socket_->setblocking(false);
   if (err != 0) {
     ESP_LOGW(TAG, "Socket unable to set nonblocking mode: errno %d", err);
@@ -49,24 +43,7 @@ void APIServer::setup() {
     return;
   }
 
-  //struct sockaddr_storage server;
-  /*
-#ifdef USE_IPV6 
   struct sockaddr_storage server;
-  memset(&server, 0, sizeof(server));
-  auto *server_view = reinterpret_cast<sockaddr_in6 *>(&server);
-  server_view->sin6_family = AF_INET6;
-  server_view->sin6_port = htons(this->port_);
-  server_view->sin6_addr = in6addr_any;
-  err = socket_->bind((struct sockaddr *) &server, sizeof(sockaddr_in6));
-#else
-*/
-  struct sockaddr_storage server;
-  //struct sockaddr_in server;
-  //memset(&server, 0, sizeof(server));
-  //server.sin_family = AF_INET;
-  //server.sin_addr.s_addr = ESPHOME_INADDR_ANY;
-  //server.sin_port = htons(this->port_);
 
   socklen_t sl = socket::set_sockaddr_any((struct sockaddr *) &server, sizeof(server), htons(this->port_));
   if (sl == 0) {
@@ -74,16 +51,15 @@ void APIServer::setup() {
     this->mark_failed();
     return;
   }
-  err = socket_->bind((struct sockaddr *) &server, sl);
-//#endif
 
+  err = socket_->bind((struct sockaddr *) &server, sl);
   if (err != 0) {
     ESP_LOGW(TAG, "Socket unable to bind: errno %d", errno);
     this->mark_failed();
     return;
   }
 
-  err = socket_->listen(5);
+  err = socket_->listen(4);
   if (err != 0) {
     ESP_LOGW(TAG, "Socket unable to listen: errno %d", errno);
     this->mark_failed();
@@ -120,8 +96,7 @@ void APIServer::loop() {
   while (true) {
     struct sockaddr_storage source_addr;
     socklen_t addr_len = sizeof(source_addr);
-    //auto sock = socket_->accept((struct sockaddr *) &source_addr, &addr_len);
-    auto sock = socket_->accept((struct sockaddr *) NULL, NULL);
+    auto sock = socket_->accept((struct sockaddr *) &source_addr, &addr_len);
     if (!sock)
       break;
     ESP_LOGD(TAG, "Accepted %s", sock->getpeername().c_str());

@@ -7,9 +7,6 @@ namespace esphome {
 namespace socket {
 
 std::unique_ptr<Socket> socket_ip(int type, int protocol) {
-#ifdef USE_IPV6
-  return socket(AF_INET6, type, IPPROTO_TCP);
-#endif
 #if LWIP_IPV6
   return socket(AF_INET6, type, protocol);
 #else

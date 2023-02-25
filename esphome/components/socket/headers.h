@@ -112,10 +112,13 @@ struct iovec {
 #ifdef USE_SOCKET_IMPL_BSD_SOCKETS
 
 #include <cstdint>
+#ifndef USE_ZEPHYR
 #include <fcntl.h>
+#endif
 
 #ifdef USE_ZEPHYR
 #include <zephyr/posix/sys/ioctl.h>
+#include <zephyr/posix/fcntl.h>
 #else
 #include <sys/ioctl.h>
 #endif

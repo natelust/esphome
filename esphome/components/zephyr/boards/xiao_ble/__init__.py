@@ -236,7 +236,6 @@ class XiaoBle(NRF52840Base):
             &spi0 {
                 status = "disabled";
             };
-            
             """))
         return super().i2c_hardware_handler(device, kwargs)
 
@@ -253,7 +252,7 @@ class XiaoBle(NRF52840Base):
             # copy the mcubootloader
             try:
                 copy(os.path.join(boot_dir, 'build/zephyr/zephyr.uf2'),
-                    os.path.join(mountpoint, 'zephyr.uf2'))
+                     os.path.join(mountpoint, 'zephyr.uf2'))
             except (FileNotFoundError, OSError):
                 # This is thrown because the board reboots right away and copy
                 # thinks it should still be there

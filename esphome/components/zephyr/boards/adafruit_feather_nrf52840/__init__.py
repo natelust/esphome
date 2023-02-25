@@ -1,10 +1,15 @@
 from textwrap import dedent
 from typing import Tuple, Mapping, List
+import os
+import time
+import psutil
 
 from ..nrf52840_base import NRF52840Base, GPIO_0, GPIO_1
 from .. import registry, BaseZephyrBoard
 
+from shutil import which, copy
 import esphome.config_validation as cv
+from esphome.util import run_external_process
 
 
 pinMapping = {
@@ -87,7 +92,7 @@ class AdafruitFeatherNrf52840(NRF52840Base):
         return "adafruit_feather_nrf52840"
 
     def flash_mapping(self) -> str:
-        mapping = dedent("""
+        mapping_west = dedent("""
         /delete-node/ &slot1_partition;
 
         &slot0_partition {
@@ -108,7 +113,78 @@ class AdafruitFeatherNrf52840(NRF52840Base):
             };
         };
         """)
-        return mapping
+
+            #zephyr,console = &cdc_acm_uart0;
+        mapping_uf2 = dedent("""
+
+        / {
+            chosen {
+            zephyr,console = &cdc_acm_uart0;
+            zephyr,shell-uart = &cdc_acm_uart0;
+            zephyr,uart-mcumgr = &cdc_acm_uart0;
+            };
+            aliases {
+                bootloader-led0 = &led1;
+                mcuboot-led0 = &led1;
+            };
+        };
+
+
+        /delete-node/ &boot_partition;
+        /delete-node/ &slot0_partition;
+        /delete-node/ &slot1_partition;
+        /delete-node/ &scratch_partition;
+        /delete-node/ &storage_partition;
+
+        &usbd {
+            cdc_acm_uart0: cdc_acm_uart0 {
+                compatible = "zephyr,cdc-acm-uart";
+                label = "CDC_ACM_0";
+            };
+        };
+
+        &flash0 {
+            partitions {
+                boot_partition: partition@26000 {
+                    label = "mcuboot";
+                    reg = <0x26000 0x11000>;
+                };
+                slot0_partition: partition@37000 {
+                    label = "image-0";
+                    reg = <0x37000 0x97000>;
+                };
+                scratch_partition: partition@ce000 {
+                    label = "image-scratch";
+                    reg = <0xce000 0x0001e000>;
+                };
+                storage_partition: partition@ec000 {
+                    label = "storage";
+                    reg = <0xec000 0x00008000>;
+                };
+                uf2_boot_partition: partition@f4000 {
+                    label = "adafruit_boot";
+                    reg = <0x000f4000 0x0000c000>;
+                };
+            };
+        };
+
+        &gd25q16 {
+            partitions {
+                compatible = "fixed-partitions";
+                #address-cells = <1>;
+                #size-cells = <1>;
+
+
+                slot1_partition: partition@0 {
+                        label = "image-1";
+                        reg = <0x0 0x97000>;
+                };
+            };
+        };
+        """)
+        if self._args.get("use_west"):
+            return mapping_west
+        return mapping_uf2
 
     def pre_compile_bootloader(self, args: List[str]) -> List[str]:
         args = super().pre_compile_bootloader(args)
@@ -121,6 +197,23 @@ class AdafruitFeatherNrf52840(NRF52840Base):
                      "-DCONFIG_SIZE_OPTIMIZATIONS=y",
                      "-DCONFIG_MCUBOOT_LOG_LEVEL_DBG=y",
                      "-DCONFIG_MCUBOOT_UTIL_LOG_LEVEL_DBG=y"))
+        if not self._args.get("use_west"):
+            args.extend((
+                "-DCONFIG_BUILD_OUTPUT_UF2=y",
+                "-DCONFIG_BOOT_SERIAL_WAIT_FOR_DFU=y",
+                "-DCONFIG_BOOT_SERIAL_WAIT_FOR_DFU_TIMEOUT=7000",
+                "-DCONFIG_BOOT_SERIAL_UART=y",
+                "-DCONFIG_MCUBOOT_SERIAL=y",
+                "-DCONFIG_BOOTLOADER_BOSSA=y",
+                "-DCONFIG_BOOTLOADER_BOSSA_ADAFRUIT_UF2=y",
+                "-DCONFIG_BOOT_SERIAL_DETECT_PIN=33",
+                "-DCONFIG_UART_CONSOLE=n",
+                "-DCONFIG_USB_CDC_ACM=y",
+                "-DCONFIG_USB_DEVICE_STACK=y",
+                "-DCONFIG_BOOT_SERIAL_CDC_ACM=y",
+                "-DCONFIG_USB_DEVICE_INITIALIZE_AT_BOOT=y",
+                "-DCONFIG_MCUBOOT_INDICATION_LED=y"
+            ))
         return args
 
     @property
@@ -139,11 +232,60 @@ class AdafruitFeatherNrf52840(NRF52840Base):
         hardware, device = super().i2c_arg_parser(kwargs)
         return hardware, device
 
-    def upload(self):
-        if self._args["use_west"]:
+    def upload(self, flash_args: str, boot_dir: os.PathLike,
+               proj_dir: os.PathLike, boot_info_path: os.PathLike,
+               bootloader: bool, host: str) -> int:
+        if self._args.get("use_west"):
             return BaseZephyrBoard.upload(self)
-        else:
-            return super().upload()
+        if which("mcumgr") is None:
+            raise ValueError(f"mcumgr must be installed to upload to {self}")
+        if not bootloader:
+            mount_points = [(x.mountpoint, x.mountpoint) for x in psutil.disk_partitions(all=True)]
+            from esphome.__main__ import choose_prompt
+            mountpoint = choose_prompt(mount_points)
+
+            # copy the mcubootloader
+            try:
+                copy(os.path.join(boot_dir, 'build/zephyr/zephyr.uf2'),
+                        os.path.join(mountpoint, 'zephyr.uf2'))
+            except (FileNotFoundError, OSError):
+                # This is thrown because the board reboots right away and copy
+                # thinks it should still be there
+                pass
+
+            # if this succeded write the indicator that mcuboot has been
+            # installed
+            with open(boot_info_path, 'w') as f:
+                f.write("")
+
+            # wait for it to reboot before trying to flash the image
+            time.sleep(5)
+            from esphome.__main__ import choose_upload_log_host
+            host = choose_upload_log_host(None, None, False, False, False)
+
+        print("### FLASHING APPLICATION #####")
+        image_args = ["mcumgr",
+                      "--conntype=serial",
+                      f"--connstring=dev={host},baud=115200,mtu=512",
+                      "image",
+                      "upload",
+                      "-e",
+                      f"{proj_dir}/build/zephyr/zephyr.signed.bin"
+                      ]
+        result = run_external_process(*image_args)
+        if result != 0:
+            print("failed to upload image, is your board in boot mode?")
+            return result
+
+        restart_args = ["mcumgr",
+                        "--conntype=serial",
+                        f"--connstring=dev={host},baud=115200",
+                        "reset"
+                        ]
+        result = run_external_process(*restart_args)
+        if result != 0:
+            print("Failed to restart device through serial connection")
+        return result
 
     def spi_pins(self, clk=None, mosi=None, miso=None) -> Mapping[str, str]:
         if clk is None:

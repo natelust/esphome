@@ -97,6 +97,7 @@ def set_core_data(config):
         ("CONFIG_MBEDTLS_AES_ROM_TABLES", "n"),
         #("CONFIG_MCUMGR_SMP_UDP_IPV4", "y"),
         ("CONFIG_ENTROPY_GENERATOR", 'y'),
+        ("CONFIG_USB_DEVICE_INITIALIZE_AT_BOOT", "y"),
     ))
 
 

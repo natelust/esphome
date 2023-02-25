@@ -200,7 +200,7 @@ class NRF52840Base(BaseZephyrBoard):
                 #"-DCONFIG_BOOT_SERIAL_WAIT_FOR_DFU=y",
                 #"-DCONFIG_BOOT_SERIAL_WAIT_FOR_DFU_TIMEOUT=5000",
                 #"-DCONFIG_BOOT_SERIAL_UART=y",
-                "-DCONFIG_MCUBOOT_INDICATION_LED=y"
+                #"-DCONFIG_MCUBOOT_INDICATION_LED=y"
             ]
         )
         return args
